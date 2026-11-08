@@ -1,6 +1,6 @@
 // Builds yt.json (lectures of the scholars and recitations of the reciters)
 // so visitors need no API key. Runs daily from GitHub Actions with the key in the
-// YT_API_KEY (or YOUTU) secret; one page per category keeps it near 2,600 of the 10,000 daily units.
+// QURAAN (or YT_API_KEY / YOUTU) secret; one page per category keeps it near 2,600 of the 10,000 daily units.
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const KEY = process.env.YT_API_KEY;
