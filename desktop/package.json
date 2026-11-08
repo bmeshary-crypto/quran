@@ -1,0 +1,37 @@
+{
+  "name": "quran-sunnah-tv",
+  "productName": "QuranSunnahTV",
+  "version": "1.0.0",
+  "description": "القرآن والسنة TV",
+  "main": "main.js",
+  "author": "bmeshary-crypto",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable nsis --publish never"
+  },
+  "build": {
+    "appId": "io.github.bmeshary-crypto.quransunnah",
+    "files": [
+      "main.js",
+      "icon.png"
+    ],
+    "win": {
+      "icon": "icon.png",
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "QuranSunnah-TV-portable.exe"
+    },
+    "nsis": {
+      "oneClick": true,
+      "artifactName": "QuranSunnah-TV-Setup.exe"
+    }
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "siteUrl": "https://bmeshary-crypto.github.io/quran/",
+  "appTag": "QuranSunnahApp",
+  "appIcon": "icon.png"
+}
