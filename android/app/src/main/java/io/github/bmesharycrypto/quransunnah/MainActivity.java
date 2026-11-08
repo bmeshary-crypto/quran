@@ -2,8 +2,12 @@ package io.github.bmesharycrypto.quransunnah;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.graphics.Insets;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.view.WindowInsets;
+import android.window.OnBackInvokedDispatcher;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.ValueCallback;
@@ -35,7 +39,18 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         web = new WebView(this);
-        setContentView(web);
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(0xFF0B3D2E);
+        root.addView(web);
+        setContentView(root);
+        // Android 15+ draws the app under the status and navigation bars; keep the page clear of them
+        if (Build.VERSION.SDK_INT >= 30) root.setOnApplyWindowInsetsListener((v, ins) -> {
+            Insets i = ins.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+            v.setPadding(i.left, i.top, i.right, i.bottom);
+            return WindowInsets.CONSUMED;
+        });
+        if (Build.VERSION.SDK_INT >= 33) getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::goBack);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
@@ -55,7 +70,8 @@ public class MainActivity extends Activity {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
                 String u = r.getUrl().toString();
-                if (r.isForMainFrame() || u.startsWith(SITE) || !u.startsWith("http")) return null;
+                if (u.startsWith(SITE)) return sitePage(u);
+                if (r.isForMainFrame() || !u.startsWith("http")) return null;
                 // audio/video elements need no CORS and send Range; radio streams never end, so let WebView fetch them
                 for (String k : r.getRequestHeaders().keySet()) if (k.equalsIgnoreCase("Range")) return null;
                 String m = r.getMethod();
@@ -124,6 +140,34 @@ public class MainActivity extends Activity {
         if (b != null) web.restoreState(b); else web.loadUrl(SITE);
     }
 
+    // The site's own files: the live copy when online (lists update daily),
+    // otherwise the copy packed into the app at build time.
+    WebResourceResponse sitePage(String u) {
+        String path = u.substring(SITE.length()).split("[?#]")[0];
+        if (path.isEmpty()) path = "index.html";
+        String type = path.endsWith(".html") ? "text/html" : path.endsWith(".json") ? "application/json"
+                : path.endsWith(".png") ? "image/png" : path.endsWith(".m3u") ? "audio/x-mpegurl" : "text/plain";
+        String charset = type.startsWith("image") ? null : "utf-8";
+        try {
+            HttpURLConnection c = (HttpURLConnection) new URL(SITE + path).openConnection();
+            c.setConnectTimeout(6000);
+            c.setReadTimeout(15000);
+            c.setUseCaches(false);
+            if (c.getResponseCode() == 200) return new WebResourceResponse(type, charset, c.getInputStream());
+        } catch (Exception ignored) {}
+        try {
+            return new WebResourceResponse(type, charset, getAssets().open("site/" + path));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    void goBack() {
+        if (fullView != null) web.getWebChromeClient().onHideCustomView();
+        else if (web.canGoBack()) web.goBack();
+        else finish();
+    }
+
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
@@ -143,9 +187,5 @@ public class MainActivity extends Activity {
     protected void onSaveInstanceState(Bundle b) { super.onSaveInstanceState(b); web.saveState(b); }
 
     @Override
-    public void onBackPressed() {
-        if (fullView != null) web.getWebChromeClient().onHideCustomView();
-        else if (web.canGoBack()) web.goBack();
-        else super.onBackPressed();
-    }
+    public void onBackPressed() { goBack(); }
 }

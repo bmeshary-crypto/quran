@@ -183,6 +183,7 @@ footer a { color: inherit; }
   المصادر: <a href="https://mp3quran.net" target="_blank" rel="noopener">mp3quran.net</a> للتلاوات والإذاعات،
   <a href="https://github.com/fawazahmed0/hadith-api" target="_blank" rel="noopener">hadith-api</a> للأحاديث،
   والقنوات الرسمية البث المجاني، ومحاضرات يوتيوب من قنواتها.
+  · <a href="privacy.html">سياسة الخصوصية</a>
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
@@ -356,6 +357,7 @@ inits.radio = async () => {
   // radios.json lists only stations that were playing at the last check (refreshed every 6 hours)
   try { radios = (await (await fetch('radios.json', { cache: 'no-cache' })).json()).radios; }
   catch { try { radios = (await (await fetch(MP3Q + 'radios?language=ar')).json()).radios; } catch {} }
+  radios?.forEach(r => r.name = r.name.replace(/[*]+/g, '').trim());
   if (!radios) { $('rList').innerHTML = '<p class="note">تعذّر تحميل الإذاعات.</p>'; return; }
   renderRadios();
 };
@@ -524,7 +526,7 @@ inits.fav = () => {
 };
 
 initTV();
-const startTab = store.get('tab', 'tv');
+const startTab = location.hash.slice(1) || store.get('tab', 'tv');
 if (startTab !== 'tv') document.querySelector(`#tabs button[data-tab="${startTab}"]`)?.click();
 </script>
 </body>

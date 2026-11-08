@@ -11,6 +11,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      UPLOAD_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -19,13 +21,33 @@ jobs:
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
-      - run: gradle assembleDebug
+          gradle-version: '8.11.1'
+      - name: Pack the site into the app (used when offline)
+        run: |
+          mkdir -p android/app/src/main/assets/site
+          cp index.html privacy.html manifest.json channels.m3u radios.json yt.json hadith-books.json icon-192.png icon-512.png android/app/src/main/assets/site/
+      - name: Decode the upload key
+        if: env.UPLOAD_KEY_PASSWORD != ''
+        run: |
+          echo "${{ secrets.UPLOAD_KEYSTORE }}" | base64 -d > "$RUNNER_TEMP/upload-key.p12"
+          echo "UPLOAD_KEYSTORE_FILE=$RUNNER_TEMP/upload-key.p12" >> "$GITHUB_ENV"
+      - name: Build (signed for Google Play)
+        if: env.UPLOAD_KEY_PASSWORD != ''
         working-directory: android
+        run: |
+          gradle bundleRelease assembleRelease
+          cp app/build/outputs/bundle/release/app-release.aab ../QuranSunnah-TV.aab
+          cp app/build/outputs/apk/release/app-release.apk ../QuranSunnah-TV.apk
+      - name: Build (test copy, no upload key yet)
+        if: env.UPLOAD_KEY_PASSWORD == ''
+        working-directory: android
+        run: |
+          gradle assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk ../QuranSunnah-TV.apk
       - name: Upload to the app release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk QuranSunnah-TV.apk
           gh release view app >/dev/null 2>&1 || gh release create app --title "تطبيق القرآن والسنة TV" --notes "ويندوز وأندرويد"
           gh release upload app QuranSunnah-TV.apk --clobber
+          [ -f QuranSunnah-TV.aab ] && gh release upload app QuranSunnah-TV.aab --clobber || true
