@@ -234,7 +234,10 @@ function needApp() {
   msg('المتصفح لا يسمح بتشغيل هذه القناة — تعمل داخل تطبيق القرآن والسنة TV.', true);
   $('appBtn').classList.remove('hide');
 }
+// inside the iPhone app, channels open in the system player (plays http and needs no CORS)
+const NATIVE = window.webkit?.messageHandlers?.nativePlay;
 function playStream(url, title) {
+  if (NATIVE) { stopAudio(); stopVideo(); $('player').classList.add('hide'); return NATIVE.postMessage({ url, title }); }
   openPlayer(title, false); current = url;
   if (!IN_APP && location.protocol === 'https:' && url.startsWith('http:')) return needApp();
   if (window.Hls && Hls.isSupported()) {

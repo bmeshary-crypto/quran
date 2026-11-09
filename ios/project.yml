@@ -1,0 +1,32 @@
+name: QuranSunnah
+options:
+  bundleIdPrefix: io.github.bmesharycrypto
+  deploymentTarget:
+    iOS: "15.0"
+targets:
+  QuranSunnah:
+    type: application
+    platform: iOS
+    sources: [QuranSunnah]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.bmesharycrypto.quransunnah
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: NO
+    info:
+      path: QuranSunnah/Info.plist
+      properties:
+        CFBundleDisplayName: القرآن والسنة
+        CFBundleDevelopmentRegion: ar
+        UILaunchScreen: {}
+        UIBackgroundModes: [audio]
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        UIViewControllerBasedStatusBarAppearance: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true

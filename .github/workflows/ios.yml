@@ -1,0 +1,36 @@
+name: Build iPhone app
+
+on:
+  push:
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate the Xcode project
+        working-directory: ios
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      # Unsigned: Sideloadly signs it with the user's own Apple ID when installing.
+      - name: Build
+        working-directory: ios
+        run: |
+          xcodebuild -project QuranSunnah.xcodeproj -scheme QuranSunnah -configuration Release \
+            -sdk iphoneos -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | tail -30
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/QuranSunnah.app Payload/
+          zip -qry ../QuranSunnah-TV.ipa Payload
+      - name: Upload to the app release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view app >/dev/null 2>&1 || gh release create app --title "تطبيق القرآن والسنة TV" --notes "ويندوز وأندرويد وآيفون"
+          gh release upload app QuranSunnah-TV.ipa --clobber
