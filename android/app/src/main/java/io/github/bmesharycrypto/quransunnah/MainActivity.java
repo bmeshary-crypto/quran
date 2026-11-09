@@ -1,12 +1,15 @@
 package io.github.bmesharycrypto.quransunnah;
 
 import android.app.Activity;
+import android.app.UiModeManager;
+import android.content.res.Configuration;
 import android.content.Intent;
 import android.graphics.Insets;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.WindowInsets;
+import android.view.WindowManager;
 import android.window.OnBackInvokedDispatcher;
 import android.view.View;
 import android.view.ViewGroup;
@@ -56,14 +59,18 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        s.setUserAgentString(s.getUserAgentString() + " QuranSunnahApp");
+        // on a TV the page switches to its remote-control layout
+        boolean tv = ((UiModeManager) getSystemService(UI_MODE_SERVICE)).getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION
+                || getPackageManager().hasSystemFeature("android.software.leanback");
+        s.setUserAgentString(s.getUserAgentString() + (tv ? " QuranSunnahApp QuranSunnahTV" : " QuranSunnahApp"));
+        if (tv) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 String u = r.getUrl().toString();
                 if (u.startsWith(SITE)) return false;
-                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(u)));
+                try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(u))); } catch (Exception ignored) {} // TVs often have no browser
                 return true;
             }
 
@@ -162,10 +169,14 @@ public class MainActivity extends Activity {
         }
     }
 
+    // Back first asks the page (close the player, leave a reciter, return to the tabs),
+    // and leaves the app only when the page has nothing left to close.
     void goBack() {
-        if (fullView != null) web.getWebChromeClient().onHideCustomView();
-        else if (web.canGoBack()) web.goBack();
-        else finish();
+        if (fullView != null) { web.getWebChromeClient().onHideCustomView(); return; }
+        web.evaluateJavascript("window.tvBack ? tvBack() : false", v -> {
+            if ("true".equals(v)) return;
+            if (web.canGoBack()) web.goBack(); else finish();
+        });
     }
 
     @Override

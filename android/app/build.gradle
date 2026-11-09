@@ -7,8 +7,8 @@ android {
         applicationId 'io.github.bmesharycrypto.quransunnah'
         minSdk 24
         targetSdk 36
-        versionCode 3
-        versionName '1.2'
+        versionCode 4
+        versionName '1.3'
     }
     // Upload key for Google Play, decoded from repo secrets by the workflow.
     signingConfigs {
