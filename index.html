@@ -509,6 +509,8 @@ inits.lectures = async () => {
   lec.cats.forEach(c => c.videos = c.videos.filter(v => !SPEAKERS.test(v.t + ' ' + v.c)));
   // whole books and lecture series, in lesson order (series/, rebuilt daily)
   try { series = (await (await fetch('series/index.json', { cache: 'no-cache' })).json()).scholars.filter(s => s.lists.length); } catch { series = []; }
+  const bare = t => t.replace(/^[^\p{L}\p{N}]+/u, '');
+  series.forEach(s => s.lists.sort((a, b) => bare(a.t).localeCompare(bare(b.t), 'ar')));
   $('lChips').innerHTML = '';
   const pick = b => { $('lq').value = ''; document.querySelectorAll('#lChips .chip').forEach(x => x.classList.toggle('on', x === b)); closeSeries(); };
   series.forEach(s => {

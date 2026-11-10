@@ -68,7 +68,9 @@ for (const s of SCHOLARS) {
         lists.push({ id: p.id, t, n: items.length, img: (th.medium || th.default || {}).url || '' });
       }
     }
-    lists.sort((a, b) => a.t.localeCompare(b.t, 'ar'));
+    // by title, ignoring leading quotes and emoji, so a book's parts sit together
+    const bare = t => t.replace(/^[^\p{L}\p{N}]+/u, '');
+    lists.sort((a, b) => bare(a.t).localeCompare(bare(b.t), 'ar'));
     index.scholars.push({ key: s.key, name: s.name, lists });
     console.log(s.name, lists.length, 'playlists,', lists.reduce((n, l) => n + l.n, 0), 'lessons');
   } catch (e) {
