@@ -151,6 +151,7 @@ html.tv footer { font-size: 15px; }
   <div class="brand">
     <img src="icon-192.png" alt="">
     <div><h1>القرآن والسنة TV</h1><p>قنوات وإذاعات القرآن، تلاوات القرّاء، الأحاديث النبوية، ومحاضرات العلماء</p><p class="by">إعداد وبرمجة م. مصطفى عوض السيد — صدقة جارية عنه وعن والديه</p></div>
+    <button class="btn ghost hide" id="updBtn" style="margin-inline-start:auto;flex:none">🔄 البحث عن تحديث</button>
   </div>
   <nav id="tabs">
     <button data-tab="tv" class="on">📺 القنوات</button>
@@ -651,9 +652,33 @@ inits.fav = () => {
   favs.forEach((f, i) => l.append(row({ n: f.kind === 'radio' ? '📻' : '📖', title: f.title, url: f.url, fav: f, onclick: () => playAudio(favs, i) })));
 };
 
+// ---------- "check for updates": only inside the Android / TV / Windows apps ----------
+// The app finds the newest build on GitHub, downloads and installs it, and reports back here.
+const UPD = window.AppUpdate || window.appUpdate;
+if (UPD) {
+  const b = $('updBtn'), idle = '🔄 البحث عن تحديث';
+  let resetT = null;
+  b.classList.remove('hide');
+  window.onAppUpdate = (state, d) => {
+    clearTimeout(resetT);
+    b.disabled = /^(checking|downloading|installing)$/.test(state);
+    b.textContent = {
+      checking: '🔄 جاري البحث عن تحديث...',
+      latest: '✔ لديك أحدث نسخة' + (d ? ` (${d})` : ''),
+      downloading: '⬇ جاري تحميل التحديث' + (+d >= 0 ? ` ${d}%` : '...'),
+      installing: '⚙ جاري تثبيت التحديث...',
+      permission: '⚠ اسمح بتثبيت التحديثات ثم اضغط مرة أخرى',
+      error: '⚠ تعذّر التحديث — حاول لاحقًا',
+    }[state] || idle;
+    if (state !== 'checking' && state !== 'downloading') resetT = setTimeout(() => { b.disabled = false; b.textContent = idle; }, state === 'installing' ? 30000 : 7000);
+  };
+  window.appUpdate?.onStatus?.(window.onAppUpdate);
+  b.onclick = () => { window.onAppUpdate('checking'); UPD.check(); };
+}
+
 // ---------- TV remote: arrows move between the nearest items, OK opens, Back goes back ----------
 let returnTo = null, recFrom = null, holdT = null, held = false, quietT = null;
-const NAV = '#tabs button, main button, main a.btn, main input, main select, main .item, #audioBar button';
+const NAV = '#updBtn, #tabs button, main button, main a.btn, main input, main select, main .item, #audioBar button';
 const PLAYER_NAV = '#bar button, #bar a.btn';
 const isOpen = id => !$(id).classList.contains('hide');
 function shown(el) {

@@ -1,5 +1,8 @@
 plugins { id 'com.android.application' }
 
+// every GitHub build gets the next number, so the update button can tell old from new
+def run = (System.getenv('GITHUB_RUN_NUMBER') ?: '0').toInteger()
+
 android {
     namespace 'io.github.bmesharycrypto.quransunnah'
     compileSdk 36
@@ -7,8 +10,16 @@ android {
         applicationId 'io.github.bmesharycrypto.quransunnah'
         minSdk 24
         targetSdk 36
-        versionCode 4
-        versionName '1.3'
+        versionCode 100 + run
+        versionName "1.${run}"
+    }
+    buildFeatures { buildConfig true }
+    // github: the APK on the releases page, with the in-app "check for updates" button.
+    // play: the Google Play build; Play updates it, and its rules forbid self-updating.
+    flavorDimensions 'store'
+    productFlavors {
+        github { dimension 'store'; buildConfigField 'boolean', 'SELF_UPDATE', 'true' }
+        play { dimension 'store'; buildConfigField 'boolean', 'SELF_UPDATE', 'false' }
     }
     // Upload key for Google Play, decoded from repo secrets by the workflow.
     signingConfigs {

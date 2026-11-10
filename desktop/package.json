@@ -13,6 +13,7 @@
     "appId": "io.github.bmeshary-crypto.quransunnah",
     "files": [
       "main.js",
+      "preload.js",
       "icon.png"
     ],
     "win": {
@@ -33,5 +34,8 @@
   },
   "siteUrl": "https://bmeshary-crypto.github.io/quran/",
   "appTag": "QuranSunnahApp",
-  "appIcon": "icon.png"
+  "appIcon": "icon.png",
+  "repo": "bmeshary-crypto/quran",
+  "setupName": "QuranSunnah-TV-Setup.exe",
+  "portableName": "QuranSunnah-TV-portable.exe"
 }

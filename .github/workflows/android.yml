@@ -35,15 +35,15 @@ jobs:
         if: env.UPLOAD_KEY_PASSWORD != ''
         working-directory: android
         run: |
-          gradle bundleRelease assembleRelease
-          cp app/build/outputs/bundle/release/app-release.aab ../QuranSunnah-TV.aab
-          cp app/build/outputs/apk/release/app-release.apk ../QuranSunnah-TV.apk
+          gradle bundlePlayRelease assembleGithubRelease
+          cp app/build/outputs/bundle/playRelease/app-play-release.aab ../QuranSunnah-TV.aab
+          cp app/build/outputs/apk/github/release/app-github-release.apk ../QuranSunnah-TV.apk
       - name: Build (test copy, no upload key yet)
         if: env.UPLOAD_KEY_PASSWORD == ''
         working-directory: android
         run: |
-          gradle assembleDebug
-          cp app/build/outputs/apk/debug/app-debug.apk ../QuranSunnah-TV.apk
+          gradle assembleGithubDebug
+          cp app/build/outputs/apk/github/debug/app-github-debug.apk ../QuranSunnah-TV.apk
       - name: Upload to the app release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -51,3 +51,6 @@ jobs:
           gh release view app >/dev/null 2>&1 || gh release create app --title "تطبيق القرآن والسنة TV" --notes "ويندوز وأندرويد"
           gh release upload app QuranSunnah-TV.apk --clobber
           [ -f QuranSunnah-TV.aab ] && gh release upload app QuranSunnah-TV.aab --clobber || true
+          # read by the app's "check for updates" button; uploaded last so it never names an APK that isn't there yet
+          echo "{\"code\": $((100 + GITHUB_RUN_NUMBER)), \"name\": \"1.$GITHUB_RUN_NUMBER\", \"apk\": \"QuranSunnah-TV.apk\"}" > android-version.json
+          gh release upload app android-version.json --clobber

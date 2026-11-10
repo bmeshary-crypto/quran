@@ -64,6 +64,8 @@ public class MainActivity extends Activity {
                 || getPackageManager().hasSystemFeature("android.software.leanback");
         s.setUserAgentString(s.getUserAgentString() + (tv ? " QuranSunnahApp QuranSunnahTV" : " QuranSunnahApp"));
         if (tv) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        // the page shows "check for updates" when this is present (GitHub build only)
+        if (BuildConfig.SELF_UPDATE) web.addJavascriptInterface(new Updater(this, web, "bmeshary-crypto/quran"), "AppUpdate");
 
         web.setWebViewClient(new WebViewClient() {
             @Override
