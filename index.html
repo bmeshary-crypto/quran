@@ -204,6 +204,11 @@ html.tv footer { font-size: 15px; }
     <div class="tools"><input type="search" id="lq" placeholder="ابحث في المحاضرات... (مثال: التوحيد، الصلاة، رمضان)"></div>
     <div class="chips" id="lChips"></div>
     <div id="lGrid" class="grid"></div>
+    <div id="sView" class="hide">
+      <div class="tools"><button class="btn ghost" id="sBack">→ رجوع للسلاسل</button></div>
+      <h2 id="sName"></h2>
+      <div id="sList" class="list"></div>
+    </div>
   </section>
 
   <section id="tab-hadith" class="hide">
@@ -317,11 +322,18 @@ $('close').onclick = () => { stopVideo(); $('player').classList.add('hide'); };
 const audio = $('audio'); let queue = [], qi = 0;
 // mp3quran's stations can take several seconds to start, and a station is sometimes
 // silent on one of its two servers, so show progress and try the other server once
-let aTimer = null, aTried = false;
+let aTimer = null, aTried = false, aHls = null;
 function aMsg(t, bad) { $('aMsg').textContent = t || ''; $('aMsg').classList.toggle('bad', !!bad); }
 function startAudio(url, retry) {
   clearTimeout(aTimer); aTried = !!retry;
-  audio.src = url; audio.play().catch(() => {});
+  if (aHls) { aHls.destroy(); aHls = null; }
+  // a few stations (Cairo) broadcast HLS, which only Safari plays without hls.js
+  if (/\.m3u8(\?|$)/i.test(url) && window.Hls && Hls.isSupported()) {
+    aHls = new Hls({ enableWorker: true });
+    aHls.loadSource(url); aHls.attachMedia(audio);
+    aHls.on(Hls.Events.MANIFEST_PARSED, () => audio.play().catch(() => {}));
+    aHls.on(Hls.Events.ERROR, (_, d) => { if (d.fatal) { clearTimeout(aTimer); stalled(); } });
+  } else { audio.src = url; audio.play().catch(() => {}); }
   aMsg('جاري الاتصال...');
   aTimer = setTimeout(stalled, 15000);
 }
@@ -349,7 +361,7 @@ function playAudio(items, i) {
   document.querySelectorAll('.row[data-url]').forEach(r => r.classList.toggle('on', r.dataset.url === it.url));
   if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title: it.title, artist: 'القرآن والسنة TV' });
 }
-function stopAudio() { clearTimeout(aTimer); aMsg(''); audio.pause(); audio.removeAttribute('src'); $('audioBar').classList.add('hide'); document.body.classList.remove('playing-audio'); }
+function stopAudio() { clearTimeout(aTimer); aMsg(''); if (aHls) { aHls.destroy(); aHls = null; } audio.pause(); audio.removeAttribute('src'); $('audioBar').classList.add('hide'); document.body.classList.remove('playing-audio'); }
 $('aNext').onclick = () => queue.length && playAudio(queue, (qi + 1) % queue.length);
 $('aPrev').onclick = () => queue.length && playAudio(queue, (qi - 1 + queue.length) % queue.length);
 $('aClose').onclick = stopAudio;
@@ -495,14 +507,54 @@ inits.lectures = async () => {
   // speakers the app owner chose not to include (same list as scripts/fetch-youtube.mjs)
   const SPEAKERS = /[أا]سامة\s+(السيد\s+)?(محمود\s+)?(ال)?[أا]زهري|[أا]سامة\s+السيد|[ou]sama\W+(el|al)\W*azhari/i;
   lec.cats.forEach(c => c.videos = c.videos.filter(v => !SPEAKERS.test(v.t + ' ' + v.c)));
+  // whole books and lecture series, in lesson order (series/, rebuilt daily)
+  try { series = (await (await fetch('series/index.json', { cache: 'no-cache' })).json()).scholars.filter(s => s.lists.length); } catch { series = []; }
   $('lChips').innerHTML = '';
+  const pick = b => { $('lq').value = ''; document.querySelectorAll('#lChips .chip').forEach(x => x.classList.toggle('on', x === b)); closeSeries(); };
+  series.forEach(s => {
+    const b = document.createElement('button'); b.className = 'chip'; b.textContent = '📚 ' + s.name;
+    b.onclick = () => { pick(b); curSch = s; renderPlaylists(s.lists); };
+    $('lChips').append(b);
+  });
   lec.cats.forEach((c, i) => {
     const b = document.createElement('button'); b.className = 'chip' + (i ? '' : ' on'); b.textContent = c.name;
-    b.onclick = () => { $('lq').value = ''; lecCat = i; document.querySelectorAll('#lChips .chip').forEach(x => x.classList.toggle('on', x === b)); renderLectures(c.videos); };
+    b.onclick = () => { pick(b); curSch = null; lecCat = i; renderLectures(c.videos); };
     $('lChips').append(b);
   });
   renderLectures(lec.cats[0]?.videos || []);
 };
+// ---------- series: a scholar's books / lecture series, then the lessons of one ----------
+let series = [], curSch = null, curList = null, sFrom = null;
+function renderPlaylists(lists) {
+  const g = $('lGrid'); g.innerHTML = '';
+  if (!lists.length) { g.innerHTML = '<p class="note">لا توجد نتائج.</p>'; return; }
+  lists.forEach(p => {
+    const el = document.createElement('div'); el.className = 'item';
+    el.innerHTML = `<img loading="lazy" src="${esc(p.img || PH)}" onerror="this.src='${PH}'" alt=""><div class="t">${esc(p.t)}</div><div class="g">📚 ${p.n} ${p.n > 10 ? 'درسًا' : p.n > 2 ? 'دروس' : 'درس'}</div>`;
+    el.onclick = () => openPlaylist(p);
+    g.append(el);
+  });
+}
+async function openPlaylist(p) {
+  curList = p; sFrom = TV ? document.activeElement : null;
+  $('lGrid').classList.add('hide'); $('lChips').classList.add('hide'); $('lq').parentElement.classList.add('hide');
+  $('sView').classList.remove('hide'); $('sName').textContent = p.t;
+  $('sList').innerHTML = '<p class="note">جاري التحميل...</p>';
+  window.scrollTo({ top: 0 });
+  let lessons;
+  try { lessons = await (await fetch(`series/${p.id}.json`, { cache: 'no-cache' })).json(); }
+  catch { $('sList').innerHTML = '<p class="note">تعذّر تحميل الدروس.</p>'; return; }
+  if (curList !== p) return;
+  $('sList').innerHTML = '';
+  lessons.forEach((v, i) => $('sList').append(row({ n: i + 1, title: v.t, onclick: () => playYT(v.id, v.t) })));
+  if (TV) focusEl($('sList').querySelector('.row'));
+}
+function closeSeries() {
+  curList = null;
+  $('sView').classList.add('hide');
+  $('lGrid').classList.remove('hide'); $('lChips').classList.remove('hide'); $('lq').parentElement.classList.remove('hide');
+}
+$('sBack').onclick = () => { closeSeries(); if (TV) focusEl(shown(sFrom) ? sFrom : $("lGrid").querySelector(".item")); };
 const fmtDur = d => { const m = /PT(?:(\d+)H)?(?:(\d+)M)?/.exec(d) || []; return m[1] ? `${m[1]} س ${m[2] || 0} د` : `${m[2] || 0} د`; };
 function renderLectures(list) {
   const g = $('lGrid'); g.innerHTML = '';
@@ -517,7 +569,9 @@ function renderLectures(list) {
 $('lq').oninput = () => {
   if (!lec) return;
   const q = norm($('lq').value.trim());
-  document.querySelectorAll('#lChips .chip').forEach((x, i) => x.classList.toggle('on', !q && i === lecCat));
+  // inside a scholar's books: search their titles
+  if (curSch) return renderPlaylists(curSch.lists.filter(p => !q || norm(p.t).includes(q)));
+  document.querySelectorAll('#lChips .chip').forEach((x, i) => x.classList.toggle('on', !q && i === lecCat + series.length));
   if (!q) return renderLectures(lec.cats[lecCat].videos);
   const seen = new Set();
   renderLectures(lec.cats.flatMap(c => c.videos).filter(v => !seen.has(v.id) && seen.add(v.id) && norm(v.t + ' ' + v.c).includes(q)));
@@ -654,6 +708,7 @@ function stepChannel(d) {
 window.tvBack = () => {
   if (isOpen('player')) { $('close').click(); if (TV) focusEl(returnTo); return true; }
   if (isOpen('tab-reciters') && isOpen('recView')) { $('recBack').click(); if (TV) focusEl(shown(recFrom) ? recFrom : $('recList').querySelector('.row')); return true; }
+  if (isOpen('tab-lectures') && isOpen('sView')) { $('sBack').click(); return true; }
   if (TV && !document.activeElement?.closest('#tabs')) { focusEl(document.querySelector('#tabs button.on')); return true; }
   return false;
 };

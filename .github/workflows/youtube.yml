@@ -19,11 +19,14 @@ jobs:
       - run: node scripts/fetch-youtube.mjs
         env:
           YT_API_KEY: ${{ secrets.QURAAN || secrets.YT_API_KEY || secrets.YOUTU }}
+      - run: node scripts/fetch-series.mjs
+        env:
+          YT_API_KEY: ${{ secrets.QURAAN || secrets.YT_API_KEY || secrets.YOUTU }}
       - name: Commit yt.json
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add yt.json
+          git add yt.json series
           git diff --cached --quiet || git commit -m "Update Quran & Sunnah lectures list"
           git pull --rebase
           git push
