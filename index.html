@@ -492,6 +492,9 @@ inits.lectures = async () => {
   $('lGrid').innerHTML = '<p class="note">جاري التحميل...</p>';
   try { lec = await (await fetch('yt.json', { cache: 'no-cache' })).json(); }
   catch { lec = null; $('lGrid').innerHTML = '<p class="note">قائمة المحاضرات غير متاحة الآن، حاول لاحقًا.</p>'; return; }
+  // speakers the app owner chose not to include (same list as scripts/fetch-youtube.mjs)
+  const SPEAKERS = /[أا]سامة\s+(السيد\s+)?(محمود\s+)?(ال)?[أا]زهري|[أا]سامة\s+السيد|[ou]sama\W+(el|al)\W*azhari/i;
+  lec.cats.forEach(c => c.videos = c.videos.filter(v => !SPEAKERS.test(v.t + ' ' + v.c)));
   $('lChips').innerHTML = '';
   lec.cats.forEach((c, i) => {
     const b = document.createElement('button'); b.className = 'chip' + (i ? '' : ' on'); b.textContent = c.name;

@@ -39,6 +39,8 @@ const CATS = [
 
 // keeps the list to lectures and recitations: no music, songs, shorts or reaction clips
 const BLOCK = /أغنية|اغنية|اغاني|أغاني|موسيقى|موسيقي|مهرجان|كليب|ريأكشن|reaction|#shorts|\bshorts\b|مسلسل|فيلم/i;
+// speakers the app owner chose not to include (checked in the title and the channel name)
+const SPEAKERS = /[أا]سامة\s+(السيد\s+)?(محمود\s+)?(ال)?[أا]زهري|[أا]سامة\s+السيد|[ou]sama\W+(el|al)\W*azhari/i;
 
 const api = async (path, params) => {
   const r = await fetch(`https://www.googleapis.com/youtube/v3/${path}?` + new URLSearchParams({ ...params, key: KEY }));
@@ -80,7 +82,7 @@ async function fetchCategory(q, videoDuration) {
   return items
     .filter(i => !seen.has(i.id.videoId) && seen.add(i.id.videoId))
     .map(i => ({ id: i.id.videoId, t: decode(i.snippet.title), c: decode(i.snippet.channelTitle), d: dur[i.id.videoId] || '' }))
-    .filter(v => v.d && !BLOCK.test(v.t));
+    .filter(v => v.d && !BLOCK.test(v.t) && !SPEAKERS.test(v.t + ' ' + v.c));
 }
 
 function decode(s) {
