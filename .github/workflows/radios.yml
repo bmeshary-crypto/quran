@@ -17,11 +17,12 @@ jobs:
         with:
           node-version: 20
       - run: node scripts/check-radios.mjs
+      - run: node scripts/fetch-archive.mjs
       - name: Commit radios.json
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add radios.json
+          git add radios.json archive
           git diff --cached --quiet || git commit -m "Update playing radio stations"
           git pull --rebase
           git push

@@ -429,6 +429,26 @@ function renderTV(g) {
 }
 
 // ---------- radio ----------
+// ---------- reciters mp3quran doesn't carry (archive/, from archive.org) ----------
+let archive = null; const archTracks = {};
+async function loadArchive() {
+  if (!archive) try { archive = (await (await fetch('archive/index.json', { cache: 'no-cache' })).json()).reciters; } catch { archive = []; }
+  return archive;
+}
+async function archiveTracks(a) {
+  return archTracks[a.key] ??= await (await fetch(`archive/${a.key}.json`, { cache: 'no-cache' })).json();
+}
+// a "station" for these reciters: all their recordings, shuffled, one after another
+async function playArchiveRadio(a, title) {
+  aMsg('جاري التحميل...');
+  let tracks;
+  try { tracks = await archiveTracks(a); } catch { return aMsg('تعذّر التحميل.', true); }
+  const list = tracks.map(t => ({ url: t.url, title: `${t.t} — ${a.name}` }));
+  for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
+  playAudio(list, 0);
+  $('aNow').textContent = title + ' · ' + list[0].title;
+}
+
 let radios = null;
 inits.radio = async () => {
   if (radios) return;
@@ -438,14 +458,19 @@ inits.radio = async () => {
   catch { try { radios = (await (await fetch(MP3Q + 'radios?language=ar')).json()).radios; } catch {} }
   radios?.forEach(r => r.name = r.name.replace(/[*]+/g, '').trim());
   if (!radios) { $('rList').innerHTML = '<p class="note">تعذّر تحميل الإذاعات.</p>'; return; }
+  // right after Cairo: non-stop stations of the archive reciters
+  const extra = (await loadArchive()).map(a => ({ name: `${a.kind === 'ibtihal' ? 'ابتهالات' : 'إذاعة'} الشيخ ${a.name} — متواصلة`, archive: a }));
+  radios.splice(radios[0]?.url.includes('webvideocore') ? 1 : 0, 0, ...extra);
   renderRadios();
 };
 function renderRadios() {
   const q = norm($('rq').value.trim());
-  const list = radios.filter(r => !q || norm(r.name).includes(q)).map(r => ({ url: r.url, title: r.name }));
+  const list = radios.filter(r => !q || norm(r.name).includes(q)).map(r => ({ url: r.url, title: r.name, archive: r.archive }));
+  const live = list.filter(r => !r.archive);
   $('rList').innerHTML = '';
-  list.slice(0, 400).forEach((r, i) => $('rList').append(row({ n: '📻', title: r.title, url: r.url,
-    fav: { kind: 'radio', ...r }, onclick: () => playAudio(list, i) })));
+  list.slice(0, 400).forEach(r => $('rList').append(r.archive
+    ? row({ n: '🎙️', title: r.title, sub: `${r.archive.n} تسجيل بترتيب عشوائي`, onclick: () => playArchiveRadio(r.archive, r.title) })
+    : row({ n: '📻', title: r.title, url: r.url, fav: { kind: 'radio', url: r.url, title: r.title }, onclick: () => playAudio(live, live.indexOf(r)) })));
 }
 $('rq').oninput = () => radios && renderRadios();
 
@@ -459,25 +484,36 @@ inits.reciters = async () => {
     reciters = (await a.json()).reciters.sort((x, y) => x.name.localeCompare(y.name, 'ar'));
     suwar = Object.fromEntries((await b.json()).suwar.map(s => [s.id, s]));
   } catch { reciters = null; $('recList').innerHTML = '<p class="note">تعذّر تحميل القرّاء.</p>'; return; }
+  for (const a of await loadArchive()) reciters.push({ name: a.name, archive: a, moshaf: [] });
+  reciters.sort((x, y) => x.name.localeCompare(y.name, 'ar'));
   renderReciters();
 };
 function renderReciters() {
   const q = norm($('recQ').value.trim());
   $('recList').innerHTML = '';
   reciters.filter(r => !q || norm(r.name).includes(q)).forEach(r =>
-    $('recList').append(row({ n: r.letter || '🎙️', title: r.name, sub: `${r.moshaf.length} ${r.moshaf.length > 1 ? 'مصاحف' : 'مصحف'}`, onclick: () => openReciter(r) })));
+    $('recList').append(row({ n: r.letter || '🎙️', title: r.name, onclick: () => openReciter(r),
+      sub: r.archive ? `${r.archive.n} ${r.archive.kind === 'ibtihal' ? 'ابتهال وتوشيح' : 'تلاوة'}` : `${r.moshaf.length} ${r.moshaf.length > 1 ? 'مصاحف' : 'مصحف'}` })));
 }
 $('recQ').oninput = () => reciters && renderReciters();
-function openReciter(r) {
-  curRec = r;
+async function openReciter(r) {
+  curRec = r; if (TV) recFrom = document.activeElement;
   $('recPick').classList.add('hide'); $('recView').classList.remove('hide');
   $('recName').textContent = r.name;
   $('moshaf').innerHTML = r.moshaf.map((m, i) => `<option value="${i}">${esc(m.name)} — ${m.surah_total} سورة</option>`).join('');
-  $('surQ').value = ''; renderSuwar();
+  $('moshaf').classList.toggle('hide', !!r.archive);
+  $('surQ').value = '';
+  if (r.archive) {
+    $('surList').innerHTML = '<p class="note">جاري التحميل...</p>';
+    try { r.tracks = await archiveTracks(r.archive); } catch { $('surList').innerHTML = '<p class="note">تعذّر التحميل.</p>'; return; }
+    if (curRec !== r) return;
+  }
+  renderSuwar();
   window.scrollTo({ top: 0 });
-  if (TV) { recFrom = document.activeElement; focusEl($('surList').querySelector('.row')); }
+  if (TV) focusEl($('surList').querySelector('.row'));
 }
 function surahList() {
+  if (curRec.archive) return curRec.tracks.map((t, i) => ({ id: i + 1, url: t.url, title: `${t.t} — ${curRec.name}`, name: t.t, sub: '', plain: true }));
   const m = curRec.moshaf[+$('moshaf').value];
   return m.surah_list.split(',').filter(Boolean).map(Number).map(id => ({
     id, url: m.server + String(id).padStart(3, '0') + '.mp3',
@@ -490,7 +526,7 @@ function renderSuwar() {
   $('surList').innerHTML = '';
   all.forEach((s, i) => {
     if (q && !norm(s.name).includes(q) && String(s.id) !== q) return;
-    $('surList').append(row({ n: s.id, title: 'سورة ' + s.name, sub: s.sub, url: s.url,
+    $('surList').append(row({ n: s.id, title: s.plain ? s.name : 'سورة ' + s.name, sub: s.sub, url: s.url,
       fav: { kind: 'surah', url: s.url, title: s.title }, onclick: () => playAudio(all, i) }));
   });
 }
@@ -511,7 +547,8 @@ inits.lectures = async () => {
   // whole books and lecture series, in lesson order (series/, rebuilt daily)
   try { series = (await (await fetch('series/index.json', { cache: 'no-cache' })).json()).scholars.filter(s => s.lists.length); } catch { series = []; }
   const bare = t => t.replace(/^[^\p{L}\p{N}]+/u, '');
-  series.forEach(s => s.lists.sort((a, b) => bare(a.t).localeCompare(bare(b.t), 'ar')));
+  // a channel's full uploads list (id UU...) stays first
+  series.forEach(s => s.lists.sort((a, b) => b.id.startsWith('UU') - a.id.startsWith('UU') || bare(a.t).localeCompare(bare(b.t), 'ar')));
   $('lChips').innerHTML = '';
   const pick = b => { $('lq').value = ''; document.querySelectorAll('#lChips .chip').forEach(x => x.classList.toggle('on', x === b)); closeSeries(); };
   series.forEach(s => {

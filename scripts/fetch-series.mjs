@@ -24,6 +24,14 @@ const SCHOLARS = [
     keep: /./,
     drop: /جنازة|محطات في حياة|مكتبة الحويني/,
   },
+  {
+    key: 'haitham', name: 'محاضرات ومناظرات هيثم طلعت',
+    channels: ['UCLj8UFOcdFrvlh24Lw7jrgA'],
+    keep: /./,
+    drop: /^$/,
+    // many debates and talks sit outside any playlist: list the channel's uploads too
+    uploads: 'كل محاضرات ومناظرات القناة (الأحدث أولًا)',
+  },
 ];
 const MAX_LISTS = 600, MAX_ITEMS = 1000;
 const GONE = /^(Private video|Deleted video)$/i;
@@ -54,23 +62,32 @@ const written = new Set();
 for (const s of SCHOLARS) {
   try {
     const lists = [];
+    const addList = async (id, t, img) => {
+      const items = (await pages('playlistItems', { part: 'snippet', playlistId: id }, MAX_ITEMS))
+        .map(i => ({ id: i.snippet.resourceId.videoId, t: decode(i.snippet.title) }))
+        .filter(v => v.id && !GONE.test(v.t));
+      if (!items.length) return null;
+      writeFileSync(`${DIR}/${id}.json`, JSON.stringify(items));
+      written.add(`${id}.json`);
+      return { id, t, n: items.length, img: img || `https://i.ytimg.com/vi/${items[0].id}/mqdefault.jpg` };
+    };
     for (const channelId of s.channels) {
       for (const p of await pages('playlists', { part: 'snippet,contentDetails', channelId }, MAX_LISTS)) {
         const t = decode(p.snippet.title);
         if (!p.contentDetails.itemCount || !s.keep.test(t) || s.drop.test(t)) continue;
-        const items = (await pages('playlistItems', { part: 'snippet', playlistId: p.id }, MAX_ITEMS))
-          .map(i => ({ id: i.snippet.resourceId.videoId, t: decode(i.snippet.title) }))
-          .filter(v => v.id && !GONE.test(v.t));
-        if (!items.length) continue;
-        writeFileSync(`${DIR}/${p.id}.json`, JSON.stringify(items));
-        written.add(`${p.id}.json`);
         const th = p.snippet.thumbnails || {};
-        lists.push({ id: p.id, t, n: items.length, img: (th.medium || th.default || {}).url || '' });
+        const l = await addList(p.id, t, (th.medium || th.default || {}).url);
+        if (l) lists.push(l);
       }
     }
     // by title, ignoring leading quotes and emoji, so a book's parts sit together
     const bare = t => t.replace(/^[^\p{L}\p{N}]+/u, '');
     lists.sort((a, b) => bare(a.t).localeCompare(bare(b.t), 'ar'));
+    // a channel's uploads playlist is its id with UC turned into UU; shown first
+    if (s.uploads) {
+      const l = await addList('UU' + s.channels[0].slice(2), s.uploads);
+      if (l) lists.unshift(l);
+    }
     index.scholars.push({ key: s.key, name: s.name, lists });
     console.log(s.name, lists.length, 'playlists,', lists.reduce((n, l) => n + l.n, 0), 'lessons');
   } catch (e) {
