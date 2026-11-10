@@ -443,8 +443,10 @@ async function playArchiveRadio(a, title) {
   aMsg('جاري التحميل...');
   let tracks;
   try { tracks = await archiveTracks(a); } catch { return aMsg('تعذّر التحميل.', true); }
-  const list = tracks.map(t => ({ url: t.url, title: `${t.t} — ${a.name}` }));
-  for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
+  let list = tracks.map(t => ({ url: t.url, title: `${t.t} — ${a.name}` }));
+  // a mushaf station keeps the surah order from a random surah; recordings are shuffled
+  if (a.station) { const k = Math.floor(Math.random() * list.length); list = [...list.slice(k), ...list.slice(0, k)]; }
+  else for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
   playAudio(list, 0);
   $('aNow').textContent = title + ' · ' + list[0].title;
 }
@@ -459,7 +461,7 @@ inits.radio = async () => {
   radios?.forEach(r => r.name = r.name.replace(/[*]+/g, '').trim());
   if (!radios) { $('rList').innerHTML = '<p class="note">تعذّر تحميل الإذاعات.</p>'; return; }
   // right after Cairo: non-stop stations of the archive reciters
-  const extra = (await loadArchive()).map(a => ({ name: `${a.kind === 'ibtihal' ? 'ابتهالات' : 'إذاعة'} الشيخ ${a.name} — متواصلة`, archive: a }));
+  const extra = [...(await loadArchive())].sort((x, y) => !!y.station - !!x.station).map(a => ({ name: `${a.kind === 'ibtihal' ? 'ابتهالات' : 'إذاعة'} الشيخ ${a.name} — متواصلة`, archive: a }));
   radios.splice(radios[0]?.url.includes('webvideocore') ? 1 : 0, 0, ...extra);
   renderRadios();
 };
@@ -469,7 +471,7 @@ function renderRadios() {
   const live = list.filter(r => !r.archive);
   $('rList').innerHTML = '';
   list.slice(0, 400).forEach(r => $('rList').append(r.archive
-    ? row({ n: '🎙️', title: r.title, sub: `${r.archive.n} تسجيل بترتيب عشوائي`, onclick: () => playArchiveRadio(r.archive, r.title) })
+    ? row({ n: '🎙️', title: r.title, sub: r.archive.station ? `${r.archive.n} سورة متتالية بلا توقف` : `${r.archive.n} تسجيل بترتيب عشوائي`, onclick: () => playArchiveRadio(r.archive, r.title) })
     : row({ n: '📻', title: r.title, url: r.url, fav: { kind: 'radio', url: r.url, title: r.title }, onclick: () => playAudio(live, live.indexOf(r)) })));
 }
 $('rq').oninput = () => radios && renderRadios();
@@ -484,7 +486,7 @@ inits.reciters = async () => {
     reciters = (await a.json()).reciters.sort((x, y) => x.name.localeCompare(y.name, 'ar'));
     suwar = Object.fromEntries((await b.json()).suwar.map(s => [s.id, s]));
   } catch { reciters = null; $('recList').innerHTML = '<p class="note">تعذّر تحميل القرّاء.</p>'; return; }
-  for (const a of await loadArchive()) reciters.push({ name: a.name, archive: a, moshaf: [] });
+  for (const a of await loadArchive()) if (!a.station) reciters.push({ name: a.name, archive: a, moshaf: [] });
   reciters.sort((x, y) => x.name.localeCompare(y.name, 'ar'));
   renderReciters();
 };
