@@ -64,6 +64,11 @@ input[type=search], select { font: inherit; padding: 9px 12px; border: 1px solid
 .row.on { background: var(--gold-soft); }
 .row .n { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--gold-soft);
   color: var(--gold); font-weight: 700; font-size: 13px; }
+.row .dl { flex: none; min-width: 34px; text-align: center; font-size: 18px; }
+.row .dl.busy { font-size: 12px; color: var(--green); font-weight: 700; }
+html.tv .row .dl { display: none; }
+#dlInfo { color: var(--muted); font-size: 13px; }
+#tab-dl h3 { margin: 18px 0 8px; font-size: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .row small { display: block; color: var(--muted); font-size: 12px; }
 #player { position: sticky; top: 0; z-index: 5; background: #000; border-radius: 14px; overflow: hidden; margin-bottom: 16px; }
 #player video, #ytWrap { width: 100%; aspect-ratio: 16/9; display: block; background: #000; }
@@ -160,6 +165,7 @@ html.tv footer { font-size: 15px; }
     <button data-tab="lectures">🎓 المحاضرات</button>
     <button data-tab="hadith">📜 الأحاديث</button>
     <button data-tab="fav">⭐ المفضلة</button>
+    <button data-tab="dl" id="dlTab">📥 التنزيلات</button>
   </nav>
 </header>
 
@@ -195,6 +201,7 @@ html.tv footer { font-size: 15px; }
         <button class="btn ghost" id="recBack">→ كل القرّاء</button>
         <select id="moshaf"></select>
         <input type="search" id="surQ" placeholder="ابحث عن سورة...">
+        <button class="btn ghost" id="dlAll">⬇️ تنزيل الكل</button>
       </div>
       <h2 id="recName"></h2>
       <div id="surList" class="list"></div>
@@ -221,6 +228,12 @@ html.tv footer { font-size: 15px; }
     </div>
     <div id="hList"></div>
     <div class="pager"><button class="btn ghost" id="hMore">عرض المزيد</button></div>
+  </section>
+
+  <section id="tab-dl" class="hide">
+    <p class="note">نزّل السور والتلاوات من تبويب القرّاء بزر ⬇️، واسمعها هنا بدون إنترنت.</p>
+    <div class="tools"><span id="dlInfo"></span></div>
+    <div id="dlList"></div>
   </section>
 
   <section id="tab-fav" class="hide">
@@ -334,10 +347,15 @@ function startAudio(url, retry) {
     aHls.loadSource(url); aHls.attachMedia(audio);
     aHls.on(Hls.Events.MANIFEST_PARSED, () => audio.play().catch(() => {}));
     aHls.on(Hls.Events.ERROR, (_, d) => { if (d.fatal) { clearTimeout(aTimer); stalled(); } });
-  } else { audio.src = url; audio.play().catch(() => {}); }
+  } else if (isDl(url)) {
+    // a downloaded copy plays from the device, with or without internet
+    dlBlobUrl(url).then(u => { if (queue[qi]?.url !== url) return; setAudioSrc(u || url); audio.play().catch(() => {}); });
+  } else { setAudioSrc(url); audio.play().catch(() => {}); }
   aMsg('جاري الاتصال...');
   aTimer = setTimeout(stalled, 15000);
 }
+let blobSrc = null;
+function setAudioSrc(u) { if (blobSrc && blobSrc !== u) URL.revokeObjectURL(blobSrc); blobSrc = u.startsWith('blob:') ? u : null; audio.src = u; }
 function otherServer(url) {
   return /\/\/backup\.qurango\.net\//.test(url) ? url.replace('//backup.qurango.net/', '//qurango.net/')
     : /\/\/qurango\.net\//.test(url) ? url.replace('//qurango.net/', '//backup.qurango.net/') : null;
@@ -372,12 +390,14 @@ if ('mediaSession' in navigator) {
   navigator.mediaSession.setActionHandler('previoustrack', () => $('aPrev').click());
 }
 
-function row({ n, title, sub, url, onclick, fav }) {
+function row({ n, title, sub, url, onclick, fav, dl }) {
   const b = document.createElement('button');
   b.className = 'row'; if (url) b.dataset.url = url;
   const isFav = fav && favs.some(f => f.url === fav.url);
   b.innerHTML = `<span class="n">${esc(n)}</span><span style="flex:1">${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</span>` +
+    (dl && !TV ? `<span class="dl"></span>` : '') +
     (fav ? `<span class="star" title="المفضلة">${isFav ? '★' : '☆'}</span>` : '');
+  if (dl && !TV) { b.dlItem = dl; dlPaint(b); }
   b.onclick = e => {
     if (e.target.classList.contains('star')) {
       const i = favs.findIndex(f => f.url === fav.url);
@@ -385,10 +405,99 @@ function row({ n, title, sub, url, onclick, fav }) {
       store.set('favs', favs); e.target.textContent = i >= 0 ? '☆' : '★';
       return;
     }
+    if (e.target.classList.contains('dl')) return dlToggle(dl);
     onclick();
   };
   return b;
 }
+
+// ---------- downloads: recitations saved on the device for listening offline ----------
+// the files sit in Cache Storage (inside the app on phones); the list of what was saved,
+// with titles, is kept in localStorage so this tab works with no internet
+const DLC = 'qs-audio';
+let dls = store.get('dls', []);          // [{url, title, group, size}]
+const dlBusy = {}, dlQueue = [];          // url -> percent (-1 waiting); items waiting their turn
+let dlRunning = false;
+const isDl = url => dls.some(d => d.url === url);
+const mb = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' م.ب';
+async function dlBlobUrl(url) {
+  try { const r = await (await caches.open(DLC)).match(url); return r ? URL.createObjectURL(await r.blob()) : null; } catch { return null; }
+}
+function dlPaint(b) {
+  const s = b.querySelector('.dl'), u = b.dlItem.url;
+  s.classList.toggle('busy', u in dlBusy);
+  s.textContent = u in dlBusy ? (dlBusy[u] < 0 ? '⏳' : dlBusy[u] + '%') : isDl(u) ? '✅' : '⬇️';
+  s.title = isDl(u) ? 'محفوظ على الجهاز — اضغط للحذف' : 'تنزيل للاستماع بدون إنترنت';
+}
+function dlRefresh(url) {
+  document.querySelectorAll('.row').forEach(b => { if (b.dlItem && (!url || b.dlItem.url === url)) dlPaint(b); });
+}
+function dlToggle(it) {
+  if (it.url in dlBusy) return;
+  if (isDl(it.url)) { if (confirm('حذف «' + it.title + '» من الجهاز؟')) dlRemove([it.url]); return; }
+  dlEnqueue([it]);
+}
+function dlEnqueue(items) {
+  if (!('caches' in window)) return toast('التنزيل غير مدعوم في هذا المتصفح');
+  navigator.storage?.persist?.().catch(() => {});
+  let n = 0;
+  for (const it of items) if (!isDl(it.url) && !(it.url in dlBusy)) { dlBusy[it.url] = -1; dlQueue.push(it); dlRefresh(it.url); n++; }
+  toast(n > 1 ? `بدأ تنزيل ${n} ملف` : n ? 'بدأ التنزيل' : 'كلها محفوظة على الجهاز');
+  dlRun();
+}
+async function dlRun() {
+  if (dlRunning) return; dlRunning = true;
+  while (dlQueue.length) {
+    const it = dlQueue.shift();
+    try {
+      const r = await fetch(it.url);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const total = +r.headers.get('content-length') || 0, rd = r.body.getReader(), parts = [];
+      let got = 0;
+      for (;;) {
+        const { done, value } = await rd.read(); if (done) break;
+        parts.push(value); got += value.length;
+        const p = total ? Math.min(99, Math.floor(got * 100 / total)) : 0;
+        if (p !== dlBusy[it.url]) { dlBusy[it.url] = p; dlRefresh(it.url); }
+      }
+      const blob = new Blob(parts, { type: 'audio/mpeg' });
+      await (await caches.open(DLC)).put(it.url, new Response(blob, { headers: { 'Content-Type': 'audio/mpeg', 'Content-Length': String(blob.size) } }));
+      dls.push({ url: it.url, title: it.title, group: it.group, size: blob.size }); store.set('dls', dls);
+    } catch (e) {
+      toast(/Quota/i.test(e.name) ? 'لا توجد مساحة كافية على الجهاز' : 'تعذّر تنزيل: ' + it.title);
+    }
+    delete dlBusy[it.url]; dlRefresh(it.url);
+    if (!$('tab-dl').classList.contains('hide')) renderDownloads();
+  }
+  dlRunning = false;
+}
+async function dlRemove(urls) {
+  try { const c = await caches.open(DLC); await Promise.all(urls.map(u => c.delete(u))); } catch {}
+  dls = dls.filter(d => !urls.includes(d.url)); store.set('dls', dls);
+  urls.forEach(dlRefresh);
+  if (!$('tab-dl').classList.contains('hide')) renderDownloads();
+}
+function renderDownloads() {
+  const l = $('dlList'); l.innerHTML = '';
+  const total = dls.reduce((n, d) => n + (d.size || 0), 0);
+  $('dlInfo').textContent = dls.length ? `${dls.length} ملف محفوظ · ${mb(total)}` : 'لا توجد تنزيلات بعد.';
+  const groups = {};
+  for (const d of dls) (groups[d.group || 'أخرى'] ??= []).push(d);
+  for (const [g, items] of Object.entries(groups)) {
+    const h = document.createElement('h3');
+    h.innerHTML = `<span style="flex:1">${esc(g)} <small style="color:var(--muted);font-weight:400">(${items.length})</small></span>`;
+    const play = document.createElement('button'); play.className = 'btn ghost'; play.textContent = '▶ تشغيل الكل';
+    play.onclick = () => playAudio(items, 0);
+    const del = document.createElement('button'); del.className = 'btn ghost'; del.textContent = '🗑 حذف';
+    del.onclick = () => confirm(`حذف كل تنزيلات «${g}» (${items.length} ملف)؟`) && dlRemove(items.map(d => d.url));
+    h.append(play, del);
+    const list = document.createElement('div'); list.className = 'list';
+    items.forEach((d, i) => list.append(row({ n: i + 1, title: d.title, sub: mb(d.size || 0), url: d.url, dl: d, onclick: () => playAudio(items, i) })));
+    l.append(h, list);
+  }
+}
+inits.dl = renderDownloads;
+if (TV) $('dlTab').remove();
 
 // ---------- TV ----------
 let channels = [];
@@ -529,9 +638,20 @@ function renderSuwar() {
   all.forEach((s, i) => {
     if (q && !norm(s.name).includes(q) && String(s.id) !== q) return;
     $('surList').append(row({ n: s.id, title: s.plain ? s.name : 'سورة ' + s.name, sub: s.sub, url: s.url,
-      fav: { kind: 'surah', url: s.url, title: s.title }, onclick: () => playAudio(all, i) }));
+      fav: { kind: 'surah', url: s.url, title: s.title }, dl: dlItemOf(s), onclick: () => playAudio(all, i) }));
   });
 }
+// downloads are grouped by reciter and mushaf
+function dlItemOf(s) {
+  const m = !curRec.archive && curRec.moshaf[+$('moshaf').value];
+  return { url: s.url, title: s.plain ? s.name : 'سورة ' + s.name, group: curRec.name + (m ? ' — ' + m.name.replace(/^حفص عن عاصم - /, '') : '') };
+}
+$('dlAll').onclick = () => {
+  const all = surahList();
+  if (all.length > 150 && !confirm(`سيتم تنزيل ${all.length} ملف، وقد تحتاج مساحة كبيرة. متابعة؟`)) return;
+  dlEnqueue(all.map(dlItemOf));
+};
+if (TV) $('dlAll').remove();
 $('moshaf').onchange = renderSuwar;
 $('surQ').oninput = () => curRec && renderSuwar();
 $('recBack').onclick = () => { $('recView').classList.add('hide'); $('recPick').classList.remove('hide'); };
@@ -815,9 +935,12 @@ if (TV) {
 }
 
 initTV();
-const startTab = location.hash.slice(1) || store.get('tab', 'tv');
+// with no internet, open the downloads (the rest needs the network)
+const startTab = location.hash.slice(1) || (!navigator.onLine && dls.length && !TV ? 'dl' : store.get('tab', 'tv'));
 if (startTab !== 'tv') document.querySelector(`#tabs button[data-tab="${startTab}"]`)?.click();
 if (TV) focusEl(document.querySelector('#tabs button.on'));
+// keeps the page itself on the device so the app opens without internet
+if ('serviceWorker' in navigator && isSecureContext) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 </body>
 </html>
