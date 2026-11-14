@@ -32,6 +32,13 @@ const SCHOLARS = [
     // many debates and talks sit outside any playlist: list the channel's uploads too
     uploads: 'كل محاضرات ومناظرات القناة (الأحدث أولًا)',
   },
+  {
+    key: 'salafway', name: 'إذاعة طريق السلف',
+    channels: ['UCmYolw8IUXCDhWqCPF09XcA'],
+    keep: /./,
+    drop: /^$/,
+    uploads: 'كل مقاطع القناة (الأحدث أولًا)',
+  },
 ];
 const MAX_LISTS = 600, MAX_ITEMS = 1000;
 const GONE = /^(Private video|Deleted video)$/i;
